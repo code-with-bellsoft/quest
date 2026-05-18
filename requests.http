@@ -41,6 +41,14 @@ Content-Type: application/json
   "requiredClass": "Any"
 }
 
+### Assign quest
+POST http://localhost:8080/quests/3/assign
+Content-Type: application/json
+
+{
+  "heroName": "Aria",
+  "heroClass": "Wizard"
+}
 
 ### Delete quest
 DELETE http://localhost:8080/quests/1
