@@ -1,10 +1,10 @@
+## Spring
+
 ### Get all quests
 GET http://localhost:8080/quests
 
-
 ### Get quest by id
 GET http://localhost:8080/quests/1
-
 
 ### Get quests by difficulty
 GET http://localhost:8080/quests?difficulty=HARD
@@ -53,9 +53,16 @@ Content-Type: application/json
 ### Delete quest
 DELETE http://localhost:8080/quests/1
 
-
 ### Spring Boot Actuator health
 GET http://localhost:8080/actuator/health
 
 ### Spring Boot Actuator DB health
 GET http://localhost:8080/actuator/health/db
+
+## Quarkus
+
+### Quarkus health
+GET http://localhost:8080/q/health
+
+### Quarkus readiness
+GET http://localhost:8080/q/health/ready

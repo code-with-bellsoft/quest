@@ -23,6 +23,8 @@ services:
     build:
       context: ./spring/
       dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
     container_name: spring
     depends_on:
       postgres:
@@ -32,6 +34,21 @@ services:
     ports:
       - "8080:8080"
 
+  backend-quarkus:
+    profiles: [ "quarkus" ]
+    build:
+      context: ./quarkus/
+      dockerfile: Dockerfile
+    environment:
+      QUARKUS_PROFILE: prod
+    container_name: quarkus
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - quest_net
+    ports:
+      - "8080:8080"
 
 volumes:
     quest-board-postgres-data:
