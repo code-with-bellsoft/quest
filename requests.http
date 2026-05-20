@@ -66,3 +66,11 @@ GET http://localhost:8080/q/health
 
 ### Quarkus readiness
 GET http://localhost:8080/q/health/ready
+
+## Jooby
+
+### Health
+GET http://localhost:8080/sys/healthCheck
+
+### Ping
+GET http://localhost:8080/sys/ping

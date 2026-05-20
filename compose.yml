@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:16-alpine
     container_name: quest-board-postgres
     environment:
         POSTGRES_DB: quest_board
@@ -49,6 +49,23 @@ services:
       - quest_net
     ports:
       - "8080:8080"
+
+  backend-jooby:
+    profiles: [ "jooby" ]
+    build:
+      context: ./jooby/
+      dockerfile: Dockerfile
+    environment:
+      application.env: prod
+    container_name: jooby
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - quest_net
+    ports:
+      - "8080:8080"
+
 
 volumes:
     quest-board-postgres-data:
