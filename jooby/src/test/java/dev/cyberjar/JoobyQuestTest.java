@@ -3,10 +3,9 @@ package dev.cyberjar;
 import io.jooby.test.JoobyTest;
 import io.restassured.http.ContentType;
 import org.jdbi.v3.core.Jdbi;
-import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.Map;
 
@@ -14,48 +13,24 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
 
-@JoobyTest(value = JoobyQuest.class, port = 0)
-class JoobyQuestTest {
+@JoobyTest(
+        value = JoobyQuest.class,
+        port = 0
+)
+public class JoobyQuestTest {
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
-                    .withDatabaseName("quest_board")
-                    .withUsername("quest_user")
-                    .withPassword("quest_pass");
 
-    private static final Jdbi JDBI;
+    private static Jdbi jdbi;
 
-    static {
-        POSTGRES.start();
-
-        System.setProperty("db.url", POSTGRES.getJdbcUrl());
-        System.setProperty("db.user", POSTGRES.getUsername());
-        System.setProperty("db.password", POSTGRES.getPassword());
-
-        System.setProperty("flyway.locations", "classpath:db/migration");
-        System.setProperty("flyway.run", "migrate");
-
-        JDBI = Jdbi.create(
-                POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(),
-                POSTGRES.getPassword()
-        );
-    }
-
-    @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
-
-        System.clearProperty("db.url");
-        System.clearProperty("db.user");
-        System.clearProperty("db.password");
-        System.clearProperty("flyway.locations");
-        System.clearProperty("flyway.run");
+    @BeforeAll
+    static void initJdbi() {
+        var jdbcUrl = "jdbc:tc:postgresql:16-alpine:///quest_board";
+        jdbi = Jdbi.create(jdbcUrl, "quest_user", "quest_pass");
     }
 
     @BeforeEach
     void setUp() {
-        JDBI.useHandle(handle -> {
+        jdbi.useHandle(handle -> {
             handle.execute("truncate table quests restart identity");
 
             handle.createUpdate("""
@@ -67,6 +42,7 @@ class JoobyQuestTest {
                     """).execute();
         });
     }
+
 
     @Test
     void returnsHealth(String serverPath) {
@@ -205,7 +181,7 @@ class JoobyQuestTest {
 
 
     private long persistQuest(String title, String difficulty, int reward, String requiredClass) {
-        return JDBI.withHandle(handle -> handle
+        return jdbi.withHandle(handle -> handle
                 .createQuery("""
                         insert into quests (title, difficulty, reward, required_class)
                         values (:title, :difficulty, :reward, :requiredClass)
