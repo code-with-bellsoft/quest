@@ -66,6 +66,21 @@ services:
     ports:
       - "8080:8080"
 
+  backend-vertx:
+    profiles: [ "vertx" ]
+    build:
+      context: ./vertx/
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: prod
+    container_name: vertx
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - quest_net
+    ports:
+      - "8080:8080"
 
 volumes:
     quest-board-postgres-data:

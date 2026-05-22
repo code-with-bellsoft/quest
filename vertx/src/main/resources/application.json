@@ -1,0 +1,19 @@
+{
+  "http": {
+    "port": 8080
+  },
+  "db": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "quest_board",
+    "user": "quest_user",
+    "password": "quest_pass",
+    "poolSize": 5
+  },
+  "flyway": {
+    "url": "jdbc:postgresql://localhost:5432/quest_board",
+    "user": "quest_user",
+    "password": "quest_pass",
+    "locations": "classpath:db/migration"
+  }
+}

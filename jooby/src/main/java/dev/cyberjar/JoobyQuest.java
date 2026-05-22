@@ -21,8 +21,11 @@ import io.jooby.validation.BeanValidator;
 import org.jdbi.v3.core.Jdbi;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public class JoobyQuest extends Jooby {
+
+    private static volatile long startedAtNanos;
 
     {
         install(new Jackson3Module());
@@ -92,9 +95,18 @@ public class JoobyQuest extends Jooby {
                 ctx.path("id").longValue(),
                 ctx.body(AssignQuestRequest.class)
         ));
+        onStarted(() -> {
+            long startupMillis = TimeUnit.NANOSECONDS.toMillis(
+                    System.nanoTime() - startedAtNanos
+            );
+
+            getLog().info("Jooby quest service started in {} ms", startupMillis);
+        });
     }
 
     public static void main(final String[] args) {
+
+        startedAtNanos = System.nanoTime();
 
         runApp(args, new NettyServer(), JoobyQuest::new);
 

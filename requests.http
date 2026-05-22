@@ -74,3 +74,57 @@ GET http://localhost:8080/sys/healthCheck
 
 ### Ping
 GET http://localhost:8080/sys/ping
+
+## Vert.x
+
+### Health
+GET http://localhost:8080/health
+
+### Get all quests
+GET http://localhost:8080/quests
+
+### Get quest by id
+GET http://localhost:8080/quests/1
+
+### Get quests by difficulty
+GET http://localhost:8080/quests?difficulty=HARD
+
+### Get quests by required class
+GET http://localhost:8080/quests?requiredClass=Wizard
+
+### Get quests by difficulty and required class
+GET http://localhost:8080/quests?difficulty=HARD&requiredClass=Wizard
+
+### Create quest
+POST http://localhost:8080/quests
+Content-Type: application/json
+
+{
+  "title": "Investigate suspicious event-loop blockage",
+  "difficulty": "HARD",
+  "reward": 700,
+  "requiredClass": "Wizard"
+}
+
+### Update quest
+PUT http://localhost:8080/quests/1
+Content-Type: application/json
+
+{
+  "title": "Clear suspiciously reactive rats from the tavern cellar",
+  "difficulty": "MEDIUM",
+  "reward": 120,
+  "requiredClass": "Any"
+}
+
+### Assign quest
+POST http://localhost:8080/quests/3/assign
+Content-Type: application/json
+
+{
+  "heroName": "Aria",
+  "heroClass": "Wizard"
+}
+
+### Delete quest
+DELETE http://localhost:8080/quests/1
