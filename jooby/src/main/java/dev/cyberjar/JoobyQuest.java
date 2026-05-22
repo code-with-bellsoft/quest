@@ -88,7 +88,7 @@ public class JoobyQuest extends Jooby {
         delete("/quests/{id}", ctx -> {
             service.delete(ctx.path("id").longValue());
             ctx.setResponseCode(StatusCode.NO_CONTENT);
-            return ctx;
+            return "";
         });
 
         post("/quests/{id}/assign", ctx -> service.assign(

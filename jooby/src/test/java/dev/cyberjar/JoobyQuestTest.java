@@ -1,48 +1,46 @@
 package dev.cyberjar;
 
+import dev.cyberjar.domain.Difficulty;
+import dev.cyberjar.domain.Quest;
+import dev.cyberjar.domain.QuestStatus;
+import dev.cyberjar.dto.AssignQuestRequest;
+import dev.cyberjar.dto.CreateQuestRequest;
+import dev.cyberjar.exception.QuestAlreadyAssignedException;
+import dev.cyberjar.exception.QuestNotFoundException;
+import dev.cyberjar.repository.QuestRepository;
+import dev.cyberjar.service.QuestService;
+import io.jooby.Jooby;
+import io.jooby.MediaType;
+import io.jooby.StatusCode;
+import io.jooby.hibernate.validator.HibernateValidatorModule;
+import io.jooby.jackson3.Jackson3Module;
 import io.jooby.test.JoobyTest;
+import io.jooby.validation.BeanValidator;
 import io.restassured.http.ContentType;
-import org.jdbi.v3.core.Jdbi;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
-
 @JoobyTest(
-        value = JoobyQuest.class,
+        value = JoobyQuestTest.TestApp.class,
         port = 0
 )
 public class JoobyQuestTest {
 
-
-    private static Jdbi jdbi;
-
-    @BeforeAll
-    static void initJdbi() {
-        var jdbcUrl = "jdbc:tc:postgresql:16-alpine:///quest_board";
-        jdbi = Jdbi.create(jdbcUrl, "quest_user", "quest_pass");
-    }
+    private static final InMemoryQuestRepository repository = new InMemoryQuestRepository();
 
     @BeforeEach
     void setUp() {
-        jdbi.useHandle(handle -> {
-            handle.execute("truncate table quests restart identity");
-
-            handle.createUpdate("""
-                    insert into quests (title, difficulty, reward, required_class)
-                    values
-                      ('Clear rats from the tavern cellar', 'EASY', 50, 'Any'),
-                      ('Recover the cursed JVM artifact', 'HARD', 500, 'Wizard'),
-                      ('Defeat the production incident dragon', 'BOSS', 1000, 'Senior Engineer')
-                    """).execute();
-        });
+        repository.reset();
     }
-
 
     @Test
     void returnsHealth(String serverPath) {
@@ -98,7 +96,12 @@ public class JoobyQuestTest {
 
     @Test
     void updatesQuest(String serverPath) {
-        long questId = persistQuest("Old title", "EASY", 10, "Intern");
+        long questId = repository.create(
+                "Old title",
+                Difficulty.EASY,
+                10,
+                "Intern"
+        ).id();
 
         given()
                 .baseUri(serverPath)
@@ -123,7 +126,12 @@ public class JoobyQuestTest {
 
     @Test
     void deletesQuest(String serverPath) {
-        long questId = persistQuest("Temporary fetch quest", "EASY", 25, "Any");
+        long questId = repository.create(
+                "Temporary fetch quest",
+                Difficulty.EASY,
+                25,
+                "Any"
+        ).id();
 
         given()
                 .baseUri(serverPath)
@@ -143,12 +151,12 @@ public class JoobyQuestTest {
 
     @Test
     void assignsOpenQuestAndRejectsSecondAssignment(String serverPath) {
-        long questId = persistQuest(
+        long questId = repository.create(
                 "Slay the flaky test dragon",
-                "BOSS",
+                Difficulty.BOSS,
                 1200,
                 "QA Paladin"
-        );
+        ).id();
 
         given()
                 .baseUri(serverPath)
@@ -179,20 +187,191 @@ public class JoobyQuestTest {
                 .body(equalTo("Quest is already assigned: " + questId));
     }
 
-
-    private long persistQuest(String title, String difficulty, int reward, String requiredClass) {
-        return jdbi.withHandle(handle -> handle
-                .createQuery("""
-                        insert into quests (title, difficulty, reward, required_class)
-                        values (:title, :difficulty, :reward, :requiredClass)
-                        returning id
-                        """)
-                .bind("title", title)
-                .bind("difficulty", difficulty)
-                .bind("reward", reward)
-                .bind("requiredClass", requiredClass)
-                .mapTo(Long.class)
-                .one());
+    @Test
+    void returnsNotFoundForUnknownQuest(String serverPath) {
+        given()
+                .baseUri(serverPath)
+                .when()
+                .get("/quests/{id}", 999_999L)
+                .then()
+                .statusCode(404)
+                .body(equalTo("Quest not found: 999999"));
     }
 
+    @Test
+    void rejectsInvalidCreateQuestRequest(String serverPath) {
+        given()
+                .baseUri(serverPath)
+                .contentType(ContentType.JSON)
+                .body(Map.of(
+                        "title", "",
+                        "reward", 0,
+                        "requiredClass", ""
+                ))
+                .when()
+                .post("/quests")
+                .then()
+                .statusCode(400)
+                .body(containsString("must"));
+    }
+
+    public static class TestApp extends Jooby {
+
+        {
+            install(new Jackson3Module());
+            install(new HibernateValidatorModule().statusCode(StatusCode.BAD_REQUEST));
+
+            errorCode(QuestNotFoundException.class, StatusCode.NOT_FOUND);
+            errorCode(QuestAlreadyAssignedException.class, StatusCode.CONFLICT);
+
+            error(QuestNotFoundException.class, (ctx, cause, statusCode) -> {
+                ctx.setResponseCode(statusCode);
+                ctx.setResponseType(MediaType.TEXT);
+                ctx.send(cause.getMessage());
+            });
+
+            error(QuestAlreadyAssignedException.class, (ctx, cause, statusCode) -> {
+                ctx.setResponseCode(statusCode);
+                ctx.setResponseType(MediaType.TEXT);
+                ctx.send(cause.getMessage());
+            });
+
+            use(BeanValidator.validate());
+
+            var service = new QuestService(repository, getLog());
+
+            get("/health", ctx -> Map.of("status", "UP"));
+
+            get("/quests/{id}", ctx -> service.findById(ctx.path("id").longValue()));
+
+            get("/quests", ctx -> service.search(
+                    ctx.query("difficulty").toOptional(Difficulty.class).orElse(null),
+                    ctx.query("requiredClass").toOptional().orElse(null)
+            ));
+
+            post("/quests", ctx -> {
+                var request = ctx.body(CreateQuestRequest.class);
+                ctx.setResponseCode(StatusCode.CREATED);
+                return service.create(request);
+            });
+
+            put("/quests/{id}", ctx -> service.update(
+                    ctx.path("id").longValue(),
+                    ctx.body(CreateQuestRequest.class)
+            ));
+
+            delete("/quests/{id}", ctx -> {
+                service.delete(ctx.path("id").longValue());
+                ctx.setResponseCode(StatusCode.NO_CONTENT);
+                return ctx;
+            });
+
+            post("/quests/{id}/assign", ctx -> service.assign(
+                    ctx.path("id").longValue(),
+                    ctx.body(AssignQuestRequest.class)
+            ));
+        }
+    }
+
+    private static final class InMemoryQuestRepository extends QuestRepository {
+
+        private final Map<Long, Quest> quests = new LinkedHashMap<>();
+        private long nextId = 1;
+
+        private InMemoryQuestRepository() {
+            super(null);
+        }
+
+        void reset() {
+            quests.clear();
+            nextId = 1;
+
+            create("Clear rats from the tavern cellar", Difficulty.EASY, 50, "Any");
+            create("Recover the cursed JVM artifact", Difficulty.HARD, 500, "Wizard");
+            create("Defeat the production incident dragon", Difficulty.BOSS, 1000, "Senior Engineer");
+        }
+
+        @Override
+        public Optional<Quest> findById(Long id) {
+            return Optional.ofNullable(quests.get(id));
+        }
+
+        @Override
+        public List<Quest> search(Difficulty difficulty, String requiredClass) {
+            return quests.values()
+                    .stream()
+                    .filter(quest -> difficulty == null || quest.difficulty() == difficulty)
+                    .filter(quest -> requiredClass == null
+                            || quest.requiredClass().equalsIgnoreCase(requiredClass))
+                    .sorted(Comparator.comparingLong(Quest::id))
+                    .toList();
+        }
+
+        @Override
+        public Quest create(String title, Difficulty difficulty, int reward, String requiredClass) {
+            Quest quest = new Quest(
+                    nextId++,
+                    title,
+                    difficulty,
+                    reward,
+                    requiredClass,
+                    QuestStatus.OPEN,
+                    null
+            );
+
+            quests.put(quest.id(), quest);
+            return quest;
+        }
+
+        @Override
+        public Quest update(Long id, String title, Difficulty difficulty, int reward, String requiredClass) {
+            Quest current = findById(id)
+                    .orElseThrow(() -> new QuestNotFoundException(id));
+
+            Quest updated = new Quest(
+                    current.id(),
+                    title,
+                    difficulty,
+                    reward,
+                    requiredClass,
+                    current.status(),
+                    current.assignedHero()
+            );
+
+            quests.put(id, updated);
+            return updated;
+        }
+
+        @Override
+        public void delete(Long id) {
+            Quest removed = quests.remove(id);
+
+            if (removed == null) {
+                throw new QuestNotFoundException(id);
+            }
+        }
+
+        @Override
+        public Quest assign(Long id, String heroName) {
+            Quest current = findById(id)
+                    .orElseThrow(() -> new QuestNotFoundException(id));
+
+            if (current.status() != QuestStatus.OPEN) {
+                throw new QuestAlreadyAssignedException(id);
+            }
+
+            Quest assigned = new Quest(
+                    current.id(),
+                    current.title(),
+                    current.difficulty(),
+                    current.reward(),
+                    current.requiredClass(),
+                    QuestStatus.ASSIGNED,
+                    heroName
+            );
+
+            quests.put(id, assigned);
+            return assigned;
+        }
+    }
 }
